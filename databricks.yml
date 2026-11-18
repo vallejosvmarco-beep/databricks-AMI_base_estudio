@@ -1,11 +1,10 @@
 bundle:
-  name: databricks_portable_lab
+  name: databricks_ami_base
 
 include:
   - resources/*.yml
   - resources/pipelines/*.yml
   - resources/jobs/*.yml
-  - resources/dashboards/*.yml
   - databricks.local*.yml
 
 
@@ -62,12 +61,6 @@ variables:
   schema_analisis:
     default: plata_analisis
 
-  schema_oro:
-    default: oro
-
-  volume_crudos:
-    default: datos_crudos
-
   volume_oficiales:
     default: datos_oficiales
 
@@ -77,16 +70,41 @@ variables:
   oficial_mes:
     default: "06"
 
+  # Periodo evaluado en plata_analisis / plata_950.
+  # "auto" = misma ventana que el bronce carga (primer dia del primer mes .. ultimo dia del ultimo mes).
+  # Tambien acepta fechas fijas "yyyy-MM-dd".
   periodo_inicio:
-    default: "2026-06-01"
+    default: auto
 
   periodo_fin:
-    default: "2026-07-31"
+    default: auto
 
-  warehouse_id:
-    description: SQL Warehouse utilizado por el dashboard
-    lookup:
-      warehouse: Serverless Starter Warehouse
+  # ============================================================
+  # FUENTES AMI (parquet en el volumen de alunizaje)
+  # ============================================================
+  # Estructura esperada por fuente:
+  #   <ami_base_path>/<fuente>/source=<AMI|PME>/format=PARQUET/periodo=<yyyy>/mes=<m>/[r1|r2/]*.parquet
+  # Fuentes: carga, consumo, tension (source=AMI) y PME (source=PME).
+  # Bronce = streaming tables con Auto Loader (solo lee archivos nuevos), un flujo por mes.
+  # La ventana se calcula en src/ami_base/utilities/ventana.py listando el landing; solo
+  # cuentan los meses con parquet en las 4 fuentes. La tarea retencion_bronce borra del
+  # bronce los meses que salen de la ventana. Plata incluye toda la masa de clientes.
+  ami_base_path:
+    description: Carpeta raiz de los parquet AMI/PME en el volumen de alunizaje
+    default: /Volumes/datosami/datos/vol_alunizaje/ami
+
+  # Ultimo mes de la ventana. "ultimo" = ultimo mes disponible en el landing (se detecta
+  # en cada corrida). Para fijarlo: ami_periodo "2025" y ami_mes "12" (o "1"/"01").
+  ami_periodo:
+    default: ultimo
+
+  ami_mes:
+    default: ultimo
+
+  # Meses de historial hacia atras desde el ultimo mes (incluido).
+  # "1" = solo el ultimo mes; "N" = N meses; "todos" = todos los meses disponibles.
+  ami_meses_historial:
+    default: "1"
 
 scripts:
 
@@ -111,4 +129,24 @@ targets:
 
     variables:
 
-      catalog: workspace
+      # Entorno CNFL: catalogo datosami, esquema unico datos
+      catalog: datosami
+      schema_alunizaje: datos
+      schema_bronce: datos
+      schema_plata: datos
+      schema_analisis: datos
+
+      # Excel oficiales TMT/TMTB: /Volumes/datosami/datos/datos_oficiales/{tmt|tmtb}/<periodo>/<mes>
+      volume_oficiales: datos_oficiales
+
+      # Fase 1: solo el ultimo mes disponible en vol_alunizaje (toda la masa de clientes).
+      # Fase 2: ami_meses_historial: todos  (sube todos los meses del landing).
+      # El unico snapshot oficial disponible es junio 2026; se usa para la columna PLAN (TMT/TMTB).
+      ami_base_path: /Volumes/datosami/datos/vol_alunizaje/ami
+      ami_periodo: ultimo
+      ami_mes: ultimo
+      ami_meses_historial: "1"
+      oficial_periodo: "2026"
+      oficial_mes: "06"
+      periodo_inicio: auto
+      periodo_fin: auto

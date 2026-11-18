@@ -1,0 +1,61 @@
+resources:
+  pipelines:
+
+    ami_base:
+
+      name: AMI_base
+
+      catalog: ${var.catalog}
+      schema: ${var.schema_bronce}
+
+      # root_path se agrega al sys.path: permite 'from utilities.ventana import ...'
+      root_path: ../../src/ami_base
+
+      serverless: true
+      continuous: false
+
+      configuration:
+
+        project.catalog: ${var.catalog}
+
+        project.schema_alunizaje: ${var.schema_alunizaje}
+        project.schema_bronce: ${var.schema_bronce}
+        project.schema_plata: ${var.schema_plata}
+
+        project.volume_oficiales: ${var.volume_oficiales}
+
+        project.oficial_periodo: ${var.oficial_periodo}
+        project.oficial_mes: ${var.oficial_mes}
+
+        # Fuentes AMI/PME: parquet en vol_alunizaje (ver databricks.yml)
+        # ami_periodo/ami_mes = "ultimo" -> ultimo mes disponible; ami_meses_historial = "1" | N | "todos"
+        project.ami_base_path: ${var.ami_base_path}
+        project.ami_periodo: ${var.ami_periodo}
+        project.ami_mes: ${var.ami_mes}
+        project.ami_meses_historial: ${var.ami_meses_historial}
+
+      libraries:
+
+        - file:
+            path: ../../src/ami_base/bronce/tmt.py
+
+        - file:
+            path: ../../src/ami_base/bronce/tmtb.py
+
+        - file:
+            path: ../../src/ami_base/bronce/carga.py
+
+        - file:
+            path: ../../src/ami_base/bronce/consumo.py
+
+        - file:
+            path: ../../src/ami_base/bronce/tension.py
+
+        - file:
+            path: ../../src/ami_base/bronce/pme.py
+
+        - file:
+            path: ../../src/ami_base/plata/plata_carga.sql
+
+        - file:
+            path: ../../src/ami_base/plata/plata_consumo.sql

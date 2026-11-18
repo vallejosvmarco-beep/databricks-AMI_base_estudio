@@ -1,0 +1,34 @@
+resources:
+  pipelines:
+
+    ami_base_analisis:
+
+      name: AMI_base_Analisis
+
+      catalog: ${var.catalog}
+      schema: ${var.schema_analisis}
+
+      serverless: true
+      continuous: false
+
+      configuration:
+
+        project.catalog: ${var.catalog}
+
+        project.schema_bronce: ${var.schema_bronce}
+        project.schema_plata: ${var.schema_plata}
+        project.schema_analisis: ${var.schema_analisis}
+
+        # "auto" = ventana del bronce carga (ver 00_ventana_analisis.sql)
+        project.periodo_inicio: ${var.periodo_inicio}
+        project.periodo_fin: ${var.periodo_fin}
+
+      libraries:
+        - file:
+            path: ../../src/ami_base_analisis/plata/00_ventana_analisis.sql
+        - file:
+            path: ../../src/ami_base_analisis/plata/plata_carga_diferencias.sql
+        - file:
+            path: ../../src/ami_base_analisis/plata/plata_carga_completitud.sql
+        - file:
+            path: ../../src/ami_base_analisis/plata/plata_950_carga.sql

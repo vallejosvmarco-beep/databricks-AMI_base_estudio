@@ -1,164 +1,59 @@
-# Databricks Portable Lab
+# AMI_base
 
-## 🚀 Proyecto Portable entre Workspaces
+Bundle de Databricks (Declarative Automation Bundle `databricks_ami_base`) que lleva los datos AMI
+desde el **landing** (parquet en `vol_alunizaje`) hasta **`plata_950_carga`**, la plata validada
+que consumen los proyectos aguas abajo (por ejemplo, Curvas Q3).
 
-Este bundle de Databricks está diseñado para ser completamente portable entre diferentes cuentas y workspaces. Incluye pipelines, workflows y toda la infraestructura necesaria para procesamiento de datos TMT/TMTB.
+## Alcance
 
-## ⚡ Quick Start
+```
+landing (vol_alunizaje/ami, parquet)
+  └─ bronce   carga, consumo, tension, pme        (+ tmt, tmtb: listas oficiales de NIS)
+      └─ plata    plata_carga, plata_consumo       (toda la masa de clientes)
+          └─ plata_analisis  plata_carga_diferencias, plata_carga_completitud
+              └─ plata_950_carga                   (fin del alcance; PLAN = TMT/TMTB o NULL)
+```
 
-### Primera Vez en un Nuevo Workspace
+Fuera de alcance: capa oro, margenes y dashboards. El filtro TMT/TMTB (`PLAN IS NOT NULL`)
+se aplica solo en el analisis de margenes de comercializacion (bundle `tmt_tmtb_oro`).
+
+## Recursos
+
+| Recurso | Que hace |
+| --- | --- |
+| Pipeline `AMI_base` | Landing -> bronce -> plata (`src/ami_base/`) |
+| Pipeline `AMI_base_Analisis` | Calidad (diferencias y completitud) -> `plata_950_carga` (`src/ami_base_analisis/`) |
+| Job `AMI_base_Workflow` | `retencion_bronce` -> `AMI_base` -> `AMI_base_Analisis` |
+
+## Ventana de meses
+
+* El bronce son streaming tables con Auto Loader: cada corrida solo lee archivos nuevos, con un
+  flujo por mes. Plata y plata_analisis son materialized views.
+* La ventana se calcula en `src/ami_base/utilities/ventana.py` listando el landing. Solo cuentan los
+  meses con parquet en las 4 fuentes (carga, consumo, tension, PME).
+* Por defecto (`ami_periodo`/`ami_mes` = `ultimo`, `ami_meses_historial` = `1`) se procesa solo el
+  ultimo mes disponible. Cuando llega un mes nuevo, la tarea `retencion_bronce` borra el anterior.
+* Para subir todos los meses: `ami_meses_historial: todos` (o `N` para los ultimos N meses).
+* `periodo_inicio`/`periodo_fin` = `auto`: el analisis usa la misma ventana que el bronce
+  (`src/ami_base_analisis/plata/00_ventana_analisis.sql`).
+
+## Variables principales (`databricks.yml`)
+
+| Variable | Uso |
+| --- | --- |
+| `catalog`, `schema_*` | Destino de las tablas |
+| `ami_base_path` | Raiz del landing AMI/PME |
+| `ami_periodo`, `ami_mes`, `ami_meses_historial` | Ventana de meses del bronce (`ultimo`, `1` / `N` / `todos`) |
+| `volume_oficiales`, `oficial_periodo`, `oficial_mes` | Excel oficiales TMT/TMTB (lista de NIS y plan) |
+| `periodo_inicio`, `periodo_fin` | Periodo evaluado en plata_analisis / plata_950 (`auto` o fechas) |
+
+## Uso
 
 ```bash
-# 1. Lista catalogos disponibles
-databricks catalogs list
-
-# 2. Configura tu entorno local
-cp databricks.local.yml.example databricks.local.yml
-vim databricks.local.yml  # Cambia el catalog por uno existente
-
-# 3. Deploy
+databricks bundle validate --strict --target free_dev
 databricks bundle deploy --target free_dev
+databricks bundle run ami_base_workflow --target free_dev
 ```
 
-### Deploy Rápido (Sin Configuración Local)
-
-```bash
-databricks bundle deploy --var catalog=main --target free_dev
-```
-
-## ⚠️ Problema Común: Dashboard usa catálogo incorrecto
-
-Si al abrir un dashboard obtienes un error como:
-
-```
-[TABLE_OR_VIEW_NOT_FOUND] `mi_catalogo_test`.`oro`.`boxes_anual` cannot be found
-```
-
-Pero tu configuración usa un catálogo diferente (ej: `workspace`), los dashboards necesitan ser reprocesados:
-
-```bash
-# Solución rápida
-python scripts/process_dashboards.py --catalog workspace --force
-```
-
-**Causa:** Los dashboards fueron procesados anteriormente con un catálogo diferente y ese cambio se guardó en los archivos `.lvdash.json`.
-
-**Solución completa:** Ver [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
-
-## 📚 Documentación
-
-* **[README-PORTABILIDAD.md](README-PORTABILIDAD.md)** - Guía completa de portabilidad y migración
-* **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Solución de problemas comunes
-* **databricks.local.yml.example** - Template de configuración local
-* **databricks.yml** - Configuración base del bundle
-
-## 🛠️ Estructura del Proyecto
-
-```
-databricks-portable-lab/
-├── databricks.yml                    # Configuración del bundle
-├── databricks.local.yml.example      # Template para configuración local
-├── README-PORTABILIDAD.md            # Guía de portabilidad
-├── scripts/
-│   └── bootstrap.py                  # Inicialización automática
-├── resources/
-│   ├── pipelines/
-│   │   ├── tmt_tmtb.pipeline.yml
-│   │   ├── tmt_tmtb_analisis.pipeline.yml
-│   │   └── tmt_tmtb_margenes_comercializacion.pipeline.yml
-│   └── jobs/
-│       └── tmt_tmtb_workflow.job.yml
-└── src/
-    ├── tmt_tmtb/                      # Código de pipelines principales
-    ├── tmt_tmtb_analisis/             # Código de análisis
-    └── ...
-```
-
-## 🔄 Arquitectura de Datos
-
-### Capas del Lakehouse
-
-* **Alunizaje** (`alunizaje`) - Zona de aterrizaje de datos crudos
-* **Bronce** (`bronce`) - Datos sin procesar, tal cual llegan
-* **Plata** (`plata`) - Datos limpiados y estandarizados
-* **Análisis** (`plata_analisis`) - Métricas y análisis de calidad
-* **Oro** (`oro`) - Datos listos para consumo final
-
-### Pipelines
-
-1. **TMT_TMTB** - Pipeline principal de ingestión (bronce → plata)
-2. **TMT_TMTB_Analisis** - Análisis de calidad de datos
-3. **TMT_TMTB_Margenes_Comercializacion** - Cálculos de márgenes (oro)
-
-### Workflow
-
-**TMT_TMTB_Workflow** orquesta los 3 pipelines en secuencia con dependencias:
-```
-actualizar_incremental (Pipeline 1)
-    ↓
-recalcular_analisis (Pipeline 2)
-    ↓
-margenes_comercializacion (Pipeline 3)
-```
-
-## ⚙️ Configuración
-
-### Variables Principales
-
-Todas las variables están definidas en `databricks.yml` y pueden sobreescribirse en `databricks.local.yml`:
-
-* `catalog` - Catálogo de Unity Catalog (REQUERIDO configurar)
-* `schema_alunizaje` - Schema de aterrizaje
-* `schema_bronce` - Schema bronce
-* `schema_plata` - Schema plata
-* `schema_analisis` - Schema de análisis
-* `schema_oro` - Schema oro
-* `volume_crudos` - Volumen de datos crudos
-* `volume_oficiales` - Volumen de datos oficiales
-* `periodo_inicio` / `periodo_fin` - Periodo de procesamiento
-
-### Personalización por Entorno
-
-Crea `databricks.local.yml` (ver ejemplo) para:
-* Usar diferentes catalogos por entorno
-* Ajustar periodos de datos
-* Configurar warehouses específicos
-
-## 🚨 Problemas Comunes
-
-### "Catalog 'workspace' does not exist"
-
-➡️ **Solución**: Lee [README-PORTABILIDAD.md](README-PORTABILIDAD.md) sección "Solución de Problemas"
-
-### El Workflow Falla pero los Pipelines Funcionan
-
-**Síntoma**: El pipeline de márgenes funciona directo, pero el workflow falla.
-
-**Causa**: El workflow tiene configuración desactualizada (le falta la tarea de márgenes).
-
-➡️ **Solución**: Redeploy el bundle para actualizar el workflow. Ver [TROUBLESHOOTING.md](TROUBLESHOOTING.md) para instrucción detallada.
-
-### Bootstrap Falla al Crear Catálogo
-
-➡️ **Solución**: Usa un catálogo existente en lugar de crear uno nuevo, o pide permisos al admin.
-
-## 🔒 Seguridad
-
-* El archivo `databricks.local.yml` está en `.gitignore`
-* Nunca commitees configuraciones específicas de tu entorno
-* Usa variables de entorno en CI/CD para valores sensibles
-
-## 🤝 Contribuir
-
-Al contribuir:
-* No modifiques el valor default de `catalog` en `databricks.yml`
-* Actualiza `databricks.local.yml.example` si agregas nuevas variables
-* Documenta cambios de arquitectura en este README
-* Mantén la portabilidad del bundle
-
-## 💬 Soporte
-
-Consulta la documentación:
-1. [README-PORTABILIDAD.md](README-PORTABILIDAD.md) - Problemas de portabilidad
-2. [databricks.local.yml.example](databricks.local.yml.example) - Configuración
-3. Comentarios en `databricks.yml` - Detalles de variables
+Para otro entorno, copia `databricks.local.yml.example` a `databricks.local.yml` y ajusta el catalogo.
+`scripts/bootstrap.py` verifica o crea el catalogo, los esquemas y el volumen de oficiales.

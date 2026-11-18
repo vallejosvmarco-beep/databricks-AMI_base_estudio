@@ -52,12 +52,10 @@ SCHEMAS = [
     "bronce",
     "plata",
     "plata_analisis",
-    "oro",
 ]
 
 
 VOLUMES = [
-    ("alunizaje", "datos_crudos"),
     ("alunizaje", "datos_oficiales"),
 ]
 
@@ -197,81 +195,6 @@ def create_volume(schema, volume):
     )
 
 
-
-
-def process_dashboards():
-    """Procesa dashboards para reemplazar catálogo hardcodeado."""
-    print()
-    print("=" * 70)
-    print("PROCESANDO DASHBOARDS PARA PORTABILIDAD")
-    print("=" * 70)
-    
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(script_dir)
-    dashboards_dir = os.path.join(project_root, "src", "dashboards")
-    
-    if not os.path.exists(dashboards_dir):
-        print(f"⚠️  Directorio de dashboards no encontrado: {dashboards_dir}")
-        return
-    
-    # Buscar archivos .lvdash.json
-    dashboard_files = [
-        f for f in os.listdir(dashboards_dir) 
-        if f.endswith('.lvdash.json')
-    ]
-    
-    if not dashboard_files:
-        print("ℹ️  No se encontraron dashboards para procesar")
-        return
-    
-    print(f"📊 Encontrados {len(dashboard_files)} dashboard(s)")
-    print()
-    
-    processed = 0
-    for dashboard_file in dashboard_files:
-        file_path = os.path.join(dashboards_dir, dashboard_file)
-        
-        # Leer contenido
-        with open(file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        # Verificar si necesita procesamiento
-        if 'workspace.' not in content:
-            # Verificar si ya tiene el catálogo correcto
-            if f'{CATALOG}.' in content:
-                print(f"✓ {dashboard_file}: ya usa catálogo '{CATALOG}'")
-                continue
-        
-        # Contar reemplazos
-        workspace_count = content.count('workspace.')
-        
-        if workspace_count == 0:
-            print(f"ℹ️  {dashboard_file}: sin referencias a 'workspace'")
-            continue
-        
-        # Reemplazar workspace con el catálogo configurado
-        new_content = content.replace('workspace.', f'{CATALOG}.')
-        
-        # Guardar el archivo modificado
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(new_content)
-        
-        print(f"✅ {dashboard_file}: {workspace_count} reemplazos 'workspace' → '{CATALOG}'")
-        processed += 1
-    
-    if processed > 0:
-        print()
-        print(f"📝 {processed} dashboard(s) procesado(s) correctamente")
-    
-    print("=" * 70)
-
-
-print("=" * 70)
-print("BOOTSTRAP DATABRICKS")
-print(f"Catalogo: {CATALOG}")
-print("=" * 70)
-
-
 # ============================================================
 # VALIDACION DEL CATALOGO
 # ============================================================
@@ -348,11 +271,6 @@ for schema, volume in VOLUMES:
 
 
 
-# ============================================================
-# DASHBOARDS
-# ============================================================
-
-process_dashboards()
 
 print("=" * 70)
 print("BOOTSTRAP COMPLETADO")

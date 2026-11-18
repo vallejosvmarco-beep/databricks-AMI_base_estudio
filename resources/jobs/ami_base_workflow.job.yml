@@ -1,0 +1,48 @@
+resources:
+  jobs:
+    ami_base_workflow:
+      name: AMI_base_Workflow
+      queue:
+        enabled: true
+
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+
+      tasks:
+        # ============================================================
+        # TAREA 1: Retencion del bronce (solo la ventana de meses)
+        # Borra por particion los meses fuera de la ventana (misma logica que el pipeline:
+        # src/ami_base/utilities/ventana.py; por defecto el ultimo mes del landing).
+        # ============================================================
+        - task_key: retencion_bronce
+          environment_key: default
+          spark_python_task:
+            python_file: ../../src/ami_base/mantenimiento/retencion_bronce.py
+            parameters:
+              - ${var.catalog}
+              - ${var.schema_bronce}
+              - ${var.ami_base_path}
+              - ${var.ami_periodo}
+              - ${var.ami_mes}
+              - ${var.ami_meses_historial}
+              - carga,consumo,tension,pme
+
+        # ============================================================
+        # TAREA 2: Landing -> bronce -> plata (pipeline AMI_base, incremental)
+        # ============================================================
+        - task_key: actualizar_incremental
+          depends_on:
+            - task_key: retencion_bronce
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.ami_base.id}
+
+        # ============================================================
+        # TAREA 3: Calidad de datos -> plata_950_carga (pipeline AMI_base_Analisis)
+        # ============================================================
+        - task_key: recalcular_analisis
+          depends_on:
+            - task_key: actualizar_incremental
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.ami_base_analisis.id}
