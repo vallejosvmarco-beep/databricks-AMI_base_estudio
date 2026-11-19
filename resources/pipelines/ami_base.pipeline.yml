@@ -55,7 +55,13 @@ resources:
             path: ../../src/ami_base/bronce/pme.py
 
         - file:
+            path: ../../src/ami_base/plata/plata_lp_canales_duplicados.sql
+
+        - file:
             path: ../../src/ami_base/plata/plata_carga.sql
 
         - file:
             path: ../../src/ami_base/plata/plata_consumo.sql
+
+        - file:
+            path: ../../src/ami_base/plata/plata_alertas_medidores.sql

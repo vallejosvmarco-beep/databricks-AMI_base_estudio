@@ -15,7 +15,11 @@ import sys
 
 from pyspark.sql import SparkSession
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:
+    _script = os.path.abspath(__file__)
+except NameError:  # spark_python_task ejecuta el archivo sin __file__
+    _script = os.path.abspath(sys.argv[0])
+sys.path.insert(0, os.path.dirname(os.path.dirname(_script)))
 from utilities.ventana import meses_contexto, meses_ventana  # noqa: E402
 
 TABLAS_PERMITIDAS = {"carga", "consumo", "tension", "pme"}

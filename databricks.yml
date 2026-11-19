@@ -140,12 +140,13 @@ targets:
       volume_oficiales: datos_oficiales
 
       # Fase 1: solo el ultimo mes disponible en vol_alunizaje (toda la masa de clientes).
+      # Fase 1b (actual): 6 meses (2026-05..2026-10) para revisar inconsistencias.
       # Fase 2: ami_meses_historial: todos  (sube todos los meses del landing).
       # El unico snapshot oficial disponible es junio 2026; se usa para la columna PLAN (TMT/TMTB).
       ami_base_path: /Volumes/datosami/datos/vol_alunizaje/ami
       ami_periodo: ultimo
       ami_mes: ultimo
-      ami_meses_historial: "1"
+      ami_meses_historial: "6"
       oficial_periodo: "2026"
       oficial_mes: "06"
       periodo_inicio: auto

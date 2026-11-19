@@ -59,7 +59,7 @@ total_ops AS (
 -- ),
 ops_calidad AS (
   -- Solo las mismas operaciones base que total_ops; las adicionales
-  -- (Generacion_SGDA_*) no excluyen al NIS y siguen en la salida si cumplen calidad.
+  -- (Generacion_SGD_*, Demanda_SGD_*) no excluyen al NIS y siguen en la salida si cumplen calidad.
   SELECT CAST(NISE AS STRING) AS NISE, COUNT(DISTINCT OPERACION) AS ops_calidad
   FROM fuente_seleccionada
   WHERE OPERACION IN (

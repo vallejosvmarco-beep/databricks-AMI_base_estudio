@@ -1,7 +1,10 @@
 -- =============================================================
 -- PLATA ANALISIS - completitud del periodo seleccionado
--- Metodologia: rango observado MIN(FECHA)..MAX(FECHA)
--- por NISE/OPERACION, pero restringido a la ventana (ventana_analisis).
+-- Metodologia: los datos esperados se calculan sobre la ventana completa
+-- (ventana_analisis: FECHA_INICIO..FECHA_FIN) para todo NISE/OPERACION,
+-- no sobre el rango observado. Un medidor que solo reporta parte de la
+-- ventana queda con completitud baja.
+-- FECHA_MIN / FECHA_MAX = limites de la ventana.
 -- =============================================================
 
 CREATE OR REFRESH MATERIALIZED VIEW ${project.catalog}.${project.schema_analisis}.plata_carga_completitud
@@ -44,13 +47,14 @@ lecturas AS (
 ),
 rangos AS (
   SELECT
-    NISE,
-    OPERACION,
-    MIN(FECHA) AS FECHA_MIN,
-    MAX(FECHA) AS FECHA_MAX,
-    DATEDIFF(MAX(FECHA), MIN(FECHA)) + 1 AS DIAS_RANGO
-  FROM lecturas
-  GROUP BY NISE, OPERACION
+    l.NISE,
+    l.OPERACION,
+    v.FECHA_INICIO AS FECHA_MIN,
+    v.FECHA_FIN AS FECHA_MAX,
+    DATEDIFF(v.FECHA_FIN, v.FECHA_INICIO) + 1 AS DIAS_RANGO
+  FROM lecturas l
+  CROSS JOIN ventana_analisis v
+  GROUP BY l.NISE, l.OPERACION, v.FECHA_INICIO, v.FECHA_FIN
 ),
 general AS (
   SELECT
