@@ -2,7 +2,9 @@
 -- PLATA 950 - plata validada, salida final del bundle AMI_base
 -- Prioridad global: diferencias (|dif| <= 5%) sobre completitud (>=95%).
 -- Diferencias solo se elige para un par NISE/OPERACION si al menos el 95%
--- de sus lecturas cumple |dif| <= 5%; si no, se usa completitud.
+-- de sus lecturas cumple |dif| <= 5% Y esas lecturas validadas cubren al menos el
+-- 95% de los intervalos de la ventana (dias x 96), el mismo umbral de completitud;
+-- si no, se usa completitud.
 -- El resultado contiene toda la masa de clientes de la ventana (ventana_analisis).
 -- PLAN = TMT/TMTB segun las listas oficiales; NULL para el resto de clientes
 -- (el analisis de margenes filtra PLAN IS NOT NULL).
@@ -15,6 +17,8 @@ WITH dif_pares_ok AS (
   FROM ${project.catalog}.${project.schema_analisis}.plata_carga_diferencias
   GROUP BY NISE, OPERACION
   HAVING AVG(CASE WHEN ABS(PORCENTAJE_DIFERENCIA) <= 5 THEN 1.0 ELSE 0.0 END) >= 0.95
+     AND SUM(CASE WHEN ABS(PORCENTAJE_DIFERENCIA) <= 5 THEN 1 ELSE 0 END)
+         >= 0.95 * (SELECT (DATEDIFF(FECHA_FIN, FECHA_INICIO) + 1) * 96 FROM ventana_analisis)
 ),
 dif_ok AS (
   SELECT d.*
