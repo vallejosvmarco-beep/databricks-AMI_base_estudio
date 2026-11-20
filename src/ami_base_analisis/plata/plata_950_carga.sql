@@ -1,83 +1,173 @@
 -- =============================================================
--- PLATA 950 - plata validada, salida final del bundle AMI_base
--- Prioridad global: diferencias (|dif| <= 5%) sobre completitud (>=95%).
--- Diferencias solo se elige para un par NISE/OPERACION si al menos el 95%
--- de sus lecturas cumple |dif| <= 5% Y esas lecturas validadas cubren al menos el
--- 95% de los intervalos de la ventana (dias x 96), el mismo umbral de completitud;
--- si no, se usa completitud.
--- El resultado contiene toda la masa de clientes de la ventana (ventana_analisis).
--- PLAN = TMT/TMTB segun las listas oficiales; NULL para el resto de clientes
--- (el analisis de margenes filtra PLAN IS NOT NULL).
+-- PLATA 950 - curva validada de 15 min por NISE, salida final del bundle AMI_base
+-- Base para las curvas caracteristicas (metodologia CNFL 2025):
+--   * Calidad DIARIA por NISE/OPERACION (plata_950_dias): solo dias con >= 90 valores
+--     validos; los faltantes (<= 6) se imputan con el promedio del NISE/OPERACION en
+--     la misma hora y mes (ES_IMPUTADO = 1, MOTIVO_IMPUTACION); si ese mes no tiene
+--     datos validos en esa hora, se usa el promedio de esa hora en toda la ventana.
+--   * FLAG_PICO_3SIGMA = 1 marca lecturas reales por encima de media + 3 sigma del
+--     NISE/OPERACION; se conservan (no se imputan).
+--   * Fuente por NISE/OPERACION (no por NISE completo): 'diferencias' = solo lecturas
+--     que cuadran con el contador; 'completitud' = lecturas sin contador comparable.
+--   * Una fila por NISE / OPERACION / FECHA (dia de la curva) / INTERVALO 1..96.
+--     FECHA_LECTURA = fin del intervalo; la etiqueta de las 00:00 es el intervalo 96
+--     del dia anterior.
+--   * TEMPORADA: verano (ene-abr), invierno (may-sep), fuera_estudio (oct-dic).
+--     TIPO_DIA: laboral / fin_de_semana.
+--   * Atributos del maestro de clientes (tarifa, sector, GD, estado, red) y marcas:
+--     sin cliente, GD inconsistente, constante distinta, servicio no activo, canales
+--     duplicados del perfil, sin medidor de red, canal duplicado del SGD.
+-- Solo energia activa: Consumo_Activo, Inyeccion_Activo, Generacion_SGD_Activa,
+-- Demanda_SGD_Activa. PLAN = TMT/TMTB segun las listas oficiales; NULL para el resto.
 -- =============================================================
 
 CREATE OR REFRESH MATERIALIZED VIEW ${project.catalog}.${project.schema_analisis}.plata_950_carga
 AS
-WITH dif_pares_ok AS (
-  SELECT NISE, OPERACION
-  FROM ${project.catalog}.${project.schema_analisis}.plata_carga_diferencias
-  GROUP BY NISE, OPERACION
-  HAVING AVG(CASE WHEN ABS(PORCENTAJE_DIFERENCIA) <= 5 THEN 1.0 ELSE 0.0 END) >= 0.95
-     AND SUM(CASE WHEN ABS(PORCENTAJE_DIFERENCIA) <= 5 THEN 1 ELSE 0 END)
-         >= 0.95 * (SELECT (DATEDIFF(FECHA_FIN, FECHA_INICIO) + 1) * 96 FROM ventana_analisis)
+WITH dias_validos AS (
+  SELECT
+    NISE,
+    OPERACION,
+    FECHA_CURVA,
+    MEDIDOR AS MEDIDOR_DIA,
+    FUENTE_CALIDAD,
+    VALORES_VALIDOS,
+    FLAG_LP_CANALES_DUPLICADOS
+  FROM ${project.catalog}.${project.schema_analisis}.plata_950_dias
+  WHERE DIA_VALIDO = 1
 ),
-dif_ok AS (
-  SELECT d.*
-  FROM ${project.catalog}.${project.schema_analisis}.plata_carga_diferencias d
-  INNER JOIN dif_pares_ok p
-    ON d.NISE = p.NISE
-   AND d.OPERACION = p.OPERACION
-  WHERE ABS(d.PORCENTAJE_DIFERENCIA) <= 5
+grilla AS (
+  SELECT d.*, g.INTERVALO
+  FROM dias_validos d
+  LATERAL VIEW EXPLODE(SEQUENCE(1, 96)) g AS INTERVALO
 ),
-comp_ok AS (
-  SELECT *
-  FROM ${project.catalog}.${project.schema_analisis}.plata_carga_completitud
-  WHERE FLAG_COMPLETITUD_GENERAL_95 = 1
+lecturas AS (
+  SELECT
+    NISE,
+    OPERACION,
+    FECHA_CURVA,
+    INTERVALO,
+    MEDIDOR,
+    ENERGIA,
+    VALIDADA_CONTADOR,
+    FLAG_PICO_3SIGMA,
+    VALIDADA_CONTADOR AS ES_VALIDA
+  FROM lecturas_950
 ),
-fuente_seleccionada AS (
-  SELECT DISTINCT
-    COALESCE(d.NISE, c.NISE) AS NISE,
-    COALESCE(d.OPERACION, c.OPERACION) AS OPERACION,
-    CASE WHEN d.NISE IS NOT NULL THEN 'diferencias' ELSE 'completitud' END AS fuente_elegida
-  FROM (SELECT DISTINCT NISE, OPERACION FROM dif_ok) d
-  FULL OUTER JOIN (SELECT DISTINCT NISE, OPERACION FROM comp_ok) c
-    ON d.NISE = c.NISE AND d.OPERACION = c.OPERACION
+promedio_horario AS (
+  SELECT
+    NISE,
+    OPERACION,
+    YEAR(FECHA_CURVA) AS PERIODO,
+    MONTH(FECHA_CURVA) AS MES,
+    CAST(FLOOR((INTERVALO - 1) / 4) AS INT) AS HORA,
+    AVG(ENERGIA) AS ENERGIA_PROMEDIO_HORA
+  FROM lecturas
+  WHERE ES_VALIDA = 1
+  GROUP BY NISE, OPERACION, YEAR(FECHA_CURVA), MONTH(FECHA_CURVA), CAST(FLOOR((INTERVALO - 1) / 4) AS INT)
 ),
-total_ops AS (
+promedio_horario_ventana AS (
+  SELECT
+    NISE,
+    OPERACION,
+    CAST(FLOOR((INTERVALO - 1) / 4) AS INT) AS HORA,
+    AVG(ENERGIA) AS ENERGIA_PROMEDIO_HORA_VENTANA
+  FROM lecturas
+  WHERE ES_VALIDA = 1
+  GROUP BY NISE, OPERACION, CAST(FLOOR((INTERVALO - 1) / 4) AS INT)
+),
+curva AS (
+  SELECT
+    g.NISE,
+    g.OPERACION,
+    g.FECHA_CURVA,
+    g.INTERVALO,
+    CAST(FLOOR((g.INTERVALO - 1) / 4) AS INT) AS HORA,
+    COALESCE(l.MEDIDOR, g.MEDIDOR_DIA) AS MEDIDOR,
+    g.FUENTE_CALIDAD,
+    g.VALORES_VALIDOS AS VALORES_VALIDOS_DIA,
+    g.FLAG_LP_CANALES_DUPLICADOS,
+    CASE
+      WHEN l.ES_VALIDA = 1 THEN l.ENERGIA
+      ELSE COALESCE(ph.ENERGIA_PROMEDIO_HORA, pv.ENERGIA_PROMEDIO_HORA_VENTANA)
+    END AS ENERGIA,
+    CASE WHEN l.ES_VALIDA = 1 THEN 0 ELSE 1 END AS ES_IMPUTADO,
+    CASE
+      WHEN l.ES_VALIDA = 1 THEN NULL
+      WHEN l.NISE IS NULL THEN 'faltante'
+      ELSE 'no_validada_contador'
+    END AS MOTIVO_IMPUTACION,
+    CASE WHEN l.ES_VALIDA = 1 THEN l.FLAG_PICO_3SIGMA ELSE 0 END AS FLAG_PICO_3SIGMA
+  FROM grilla g
+  LEFT JOIN lecturas l
+    ON g.NISE = l.NISE
+   AND g.OPERACION = l.OPERACION
+   AND g.FECHA_CURVA = l.FECHA_CURVA
+   AND g.INTERVALO = l.INTERVALO
+  LEFT JOIN promedio_horario ph
+    ON g.NISE = ph.NISE
+   AND g.OPERACION = ph.OPERACION
+   AND YEAR(g.FECHA_CURVA) = ph.PERIODO
+   AND MONTH(g.FECHA_CURVA) = ph.MES
+   AND CAST(FLOOR((g.INTERVALO - 1) / 4) AS INT) = ph.HORA
+  LEFT JOIN promedio_horario_ventana pv
+    ON g.NISE = pv.NISE
+   AND g.OPERACION = pv.OPERACION
+   AND CAST(FLOOR((g.INTERVALO - 1) / 4) AS INT) = pv.HORA
+),
+nis_ami AS (
+  SELECT
+    NISE,
+    MAX(CASE WHEN SGDA_NORMALIZADO = 'Generacion' THEN 1 ELSE 0 END) AS TIENE_MEDIDOR_GENERACION,
+    MAX(CASE WHEN SGDA_NORMALIZADO IN ('Consumo', 'Bidireccional') THEN CONSTANTE END) AS CONSTANTE_AMI
+  FROM lecturas_950
+  GROUP BY NISE
+),
+clientes AS (
   SELECT
     CAST(NISE AS STRING) AS NISE,
-    COUNT(DISTINCT OPERACION) AS total_ops
-  FROM ${project.catalog}.${project.schema_plata}.plata_carga
-  WHERE OPERACION IN (
-    'Consumo_Activo_kWh',
-    'Inyeccion_Activo_kWh',
-    'Consumo_Reactivo_kVARh'
-  )
-    AND CAST(FECHA_LECTURA_REAL AS TIMESTAMP) >= (SELECT CAST(FECHA_INICIO AS TIMESTAMP) FROM ventana_analisis)
-    AND CAST(FECHA_LECTURA_REAL AS TIMESTAMP) < (SELECT CAST(DATE_ADD(FECHA_FIN, 1) AS TIMESTAMP) FROM ventana_analisis)
-  GROUP BY CAST(NISE AS STRING)
+    TARIFA,
+    SECTOR,
+    DESC_SECTOR,
+    TIENE_GD,
+    ESTADO_SERVICIO,
+    CIRCUITO,
+    TRANSFORMADOR,
+    CAST(CONSTANTE AS DOUBLE) AS CONSTANTE_CLIENTE
+  FROM ${project.catalog}.${project.schema_plata}.${project.tabla_clientes}
 ),
--- ops_calidad AS (
---   SELECT NISE, COUNT(DISTINCT OPERACION) AS ops_calidad
---   FROM fuente_seleccionada
---   GROUP BY NISE
--- ),
-ops_calidad AS (
-  -- Solo las mismas operaciones base que total_ops; las adicionales
-  -- (Generacion_SGD_*, Demanda_SGD_*) no excluyen al NIS y siguen en la salida si cumplen calidad.
-  SELECT CAST(NISE AS STRING) AS NISE, COUNT(DISTINCT OPERACION) AS ops_calidad
-  FROM fuente_seleccionada
-  WHERE OPERACION IN (
-    'Consumo_Activo_kWh',
-    'Inyeccion_Activo_kWh',
-    'Consumo_Reactivo_kVARh'
-  )
-  GROUP BY CAST(NISE AS STRING)
+atributos AS (
+  SELECT
+    a.NISE,
+    c.TARIFA,
+    c.SECTOR,
+    c.DESC_SECTOR,
+    c.TIENE_GD,
+    a.TIENE_MEDIDOR_GENERACION,
+    c.ESTADO_SERVICIO,
+    c.CIRCUITO,
+    c.TRANSFORMADOR,
+    CASE WHEN c.NISE IS NULL THEN 1 ELSE 0 END AS FLAG_SIN_CLIENTE,
+    CASE
+      WHEN c.TIENE_GD = TRUE AND a.TIENE_MEDIDOR_GENERACION = 0 THEN 1
+      WHEN c.TIENE_GD = FALSE AND a.TIENE_MEDIDOR_GENERACION = 1 THEN 1
+      ELSE 0
+    END AS FLAG_GD_INCONSISTENTE,
+    CASE
+      WHEN c.CONSTANTE_CLIENTE IS NOT NULL AND a.CONSTANTE_AMI IS NOT NULL
+       AND c.CONSTANTE_CLIENTE <> a.CONSTANTE_AMI THEN 1
+      ELSE 0
+    END AS FLAG_CONSTANTE_DISTINTA,
+    CASE
+      WHEN c.NISE IS NOT NULL AND COALESCE(c.ESTADO_SERVICIO, '') <> 'Activo' THEN 1
+      ELSE 0
+    END AS FLAG_SERVICIO_NO_ACTIVO
+  FROM nis_ami a
+  LEFT JOIN clientes c
+    ON a.NISE = c.NISE
 ),
-nises_completos AS (
-  SELECT t.NISE
-  FROM total_ops t
-  INNER JOIN ops_calidad o ON t.NISE = o.NISE
-  WHERE t.total_ops = o.ops_calidad
+alertas_sgd AS (
+  SELECT NISE, PERIODO, MES, FLAG_SIN_MEDIDOR_RED, FLAG_CANAL_DUPLICADO
+  FROM ${project.catalog}.${project.schema_plata}.plata_alertas_medidores
 ),
 plan_ref AS (
   SELECT CAST(nis AS STRING) AS NISE, 'TMT' AS PLAN
@@ -92,36 +182,48 @@ plan_unico AS (
   GROUP BY NISE
 )
 SELECT
-  CASE WHEN fs.fuente_elegida = 'diferencias' THEN d.NISE ELSE c.NISE END AS NISE,
+  cu.NISE,
   p.PLAN,
-  CASE WHEN fs.fuente_elegida = 'diferencias' THEN d.OPERACION ELSE c.OPERACION END AS OPERACION,
-  CASE WHEN fs.fuente_elegida = 'diferencias' THEN d.FECHA_LECTURA ELSE c.FECHA_LECTURA END AS FECHA_LECTURA,
-  CASE WHEN fs.fuente_elegida = 'diferencias' THEN d.FECHA ELSE c.FECHA END AS FECHA,
-  CASE WHEN fs.fuente_elegida = 'diferencias' THEN d.ENERGIA ELSE c.ENERGIA END AS ENERGIA,
-  CASE WHEN fs.fuente_elegida = 'diferencias' THEN d.DEMANDA ELSE c.DEMANDA END AS DEMANDA,
-  fs.fuente_elegida AS FUENTE_CALIDAD
-FROM fuente_seleccionada fs
-INNER JOIN nises_completos nc
-  ON fs.NISE = nc.NISE
-LEFT JOIN dif_ok d
-  ON fs.NISE = d.NISE
- AND fs.OPERACION = d.OPERACION
- AND fs.fuente_elegida = 'diferencias'
-LEFT JOIN comp_ok c
-  ON fs.NISE = c.NISE
- AND fs.OPERACION = c.OPERACION
- AND fs.fuente_elegida = 'completitud'
+  cu.OPERACION,
+  cu.MEDIDOR,
+  TIMESTAMPADD(MINUTE, cu.INTERVALO * 15, CAST(cu.FECHA_CURVA AS TIMESTAMP)) AS FECHA_LECTURA,
+  cu.FECHA_CURVA AS FECHA,
+  cu.INTERVALO,
+  cu.HORA,
+  CASE
+    WHEN MONTH(cu.FECHA_CURVA) BETWEEN 1 AND 4 THEN 'verano'
+    WHEN MONTH(cu.FECHA_CURVA) BETWEEN 5 AND 9 THEN 'invierno'
+    ELSE 'fuera_estudio'
+  END AS TEMPORADA,
+  CASE WHEN DAYOFWEEK(cu.FECHA_CURVA) IN (1, 7) THEN 'fin_de_semana' ELSE 'laboral' END AS TIPO_DIA,
+  ROUND(cu.ENERGIA, 3) AS ENERGIA,
+  ROUND(cu.ENERGIA * 4, 3) AS DEMANDA,
+  cu.ES_IMPUTADO,
+  cu.MOTIVO_IMPUTACION,
+  cu.FLAG_PICO_3SIGMA,
+  cu.FUENTE_CALIDAD,
+  cu.VALORES_VALIDOS_DIA,
+  atr.TARIFA,
+  atr.SECTOR,
+  atr.DESC_SECTOR,
+  atr.TIENE_GD,
+  atr.TIENE_MEDIDOR_GENERACION,
+  atr.ESTADO_SERVICIO,
+  atr.CIRCUITO,
+  atr.TRANSFORMADOR,
+  atr.FLAG_SIN_CLIENTE,
+  atr.FLAG_GD_INCONSISTENTE,
+  atr.FLAG_CONSTANTE_DISTINTA,
+  atr.FLAG_SERVICIO_NO_ACTIVO,
+  cu.FLAG_LP_CANALES_DUPLICADOS,
+  COALESCE(s.FLAG_SIN_MEDIDOR_RED, 0) AS FLAG_SIN_MEDIDOR_RED,
+  COALESCE(s.FLAG_CANAL_DUPLICADO, 0) AS FLAG_CANAL_DUPLICADO
+FROM curva cu
+LEFT JOIN atributos atr
+  ON cu.NISE = atr.NISE
+LEFT JOIN alertas_sgd s
+  ON cu.NISE = s.NISE
+ AND YEAR(cu.FECHA_CURVA) = s.PERIODO
+ AND MONTH(cu.FECHA_CURVA) = s.MES
 LEFT JOIN plan_unico p
-  ON fs.NISE = p.NISE
-WHERE CASE
-        WHEN fs.fuente_elegida = 'diferencias' THEN d.FECHA_LECTURA
-        ELSE c.FECHA_LECTURA
-      END IS NOT NULL
-  AND CASE
-        WHEN fs.fuente_elegida = 'diferencias' THEN d.FECHA
-        ELSE c.FECHA
-      END >= (SELECT FECHA_INICIO FROM ventana_analisis)
-  AND CASE
-        WHEN fs.fuente_elegida = 'diferencias' THEN d.FECHA
-        ELSE c.FECHA
-      END <= (SELECT FECHA_FIN FROM ventana_analisis);
+  ON cu.NISE = p.NISE;

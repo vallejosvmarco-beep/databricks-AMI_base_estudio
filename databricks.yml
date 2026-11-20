@@ -79,6 +79,11 @@ variables:
   periodo_fin:
     default: auto
 
+  # Maestro de clientes (una fila por NISE) en ${var.catalog}.${var.schema_plata}:
+  # aporta TARIFA, SECTOR, TIENE_GD, ESTADO_SERVICIO, CIRCUITO y TRANSFORMADOR a plata_950.
+  tabla_clientes:
+    default: clientes_base_plata_clientes
+
   # ============================================================
   # FUENTES AMI (parquet en el volumen de alunizaje)
   # ============================================================
@@ -140,13 +145,19 @@ targets:
       volume_oficiales: datos_oficiales
 
       # Fase 1: solo el ultimo mes disponible en vol_alunizaje (toda la masa de clientes).
-      # Fase 1b (actual): 6 meses (2026-05..2026-10) para revisar inconsistencias.
+      # Fase 1b: 6 meses (2026-05..2026-10) para revisar inconsistencias.
+      # Fase 1c (actual): 2026-04..2026-10 (7 meses), lo minimo para tener las dos
+      #   estaciones del estudio CNFL 2025: verano (ene-abr) = 2026-04 e invierno
+      #   (may-sep) = 2026-05..09. Mes de contexto del bronce consumo: 2026-03.
+      #   Incremental y SIN borrado: el job ya no corre retencion_bronce; los meses que
+      #   salgan de la ventana se quedan en el bronce (los cortes se definen despues).
+      #   Fin fijo (2026-10) para no ingerir meses nuevos sin decidirlo.
       # Fase 2: ami_meses_historial: todos  (sube todos los meses del landing).
       # El unico snapshot oficial disponible es junio 2026; se usa para la columna PLAN (TMT/TMTB).
       ami_base_path: /Volumes/datosami/datos/vol_alunizaje/ami
-      ami_periodo: ultimo
-      ami_mes: ultimo
-      ami_meses_historial: "6"
+      ami_periodo: "2026"
+      ami_mes: "10"
+      ami_meses_historial: "7"
       oficial_periodo: "2026"
       oficial_mes: "06"
       periodo_inicio: auto

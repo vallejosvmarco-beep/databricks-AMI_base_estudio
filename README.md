@@ -23,7 +23,7 @@ se aplica solo en el analisis de margenes de comercializacion (bundle `tmt_tmtb_
 | --- | --- |
 | Pipeline `AMI_base` | Landing -> bronce -> plata (`src/ami_base/`) |
 | Pipeline `AMI_base_Analisis` | Calidad (diferencias y completitud) -> `plata_950_carga` (`src/ami_base_analisis/`) |
-| Job `AMI_base_Workflow` | `retencion_bronce` -> `AMI_base` -> `AMI_base_Analisis` |
+| Job `AMI_base_Workflow` | `AMI_base` -> `AMI_base_Analisis` (sin retencion: no se borra nada del bronce) |
 
 ## Ventana de meses
 
@@ -31,8 +31,11 @@ se aplica solo en el analisis de margenes de comercializacion (bundle `tmt_tmtb_
   flujo por mes. Plata y plata_analisis son materialized views.
 * La ventana se calcula en `src/ami_base/utilities/ventana.py` listando el landing. Solo cuentan los
   meses con parquet en las 4 fuentes (carga, consumo, tension, PME).
-* Por defecto (`ami_periodo`/`ami_mes` = `ultimo`, `ami_meses_historial` = `1`) se procesa solo el
-  ultimo mes disponible. Cuando llega un mes nuevo, la tarea `retencion_bronce` borra el anterior.
+* Por defecto (`ami_periodo`/`ami_mes` = `ultimo`, `ami_meses_historial` = `1`) se ingiere solo el
+  ultimo mes disponible. La carga es incremental: los meses que salen de la ventana dejan de
+  ingerirse pero se quedan en el bronce (el job no borra nada). `retencion_bronce.py` queda para
+  cortes futuros; si se usa, un mes borrado no se re-ingiere con el mismo flujo (checkpoint).
+* `free_dev` usa hoy 2026-04..2026-10: lo minimo para tener verano (abr) e invierno (may-sep).
 * Para subir todos los meses: `ami_meses_historial: todos` (o `N` para los ultimos N meses).
 * `periodo_inicio`/`periodo_fin` = `auto`: el analisis usa la misma ventana que el bronce
   (`src/ami_base_analisis/plata/00_ventana_analisis.sql`).

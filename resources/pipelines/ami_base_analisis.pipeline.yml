@@ -23,6 +23,9 @@ resources:
         project.periodo_inicio: ${var.periodo_inicio}
         project.periodo_fin: ${var.periodo_fin}
 
+        # Maestro de clientes (SIGEL), en catalog.schema_plata: tarifa, sector, GD, estado
+        project.tabla_clientes: ${var.tabla_clientes}
+
       libraries:
         - file:
             path: ../../src/ami_base_analisis/plata/00_ventana_analisis.sql
@@ -31,4 +34,10 @@ resources:
         - file:
             path: ../../src/ami_base_analisis/plata/plata_carga_completitud.sql
         - file:
+            path: ../../src/ami_base_analisis/plata/01_lecturas_950.sql
+        - file:
+            path: ../../src/ami_base_analisis/plata/plata_950_dias.sql
+        - file:
             path: ../../src/ami_base_analisis/plata/plata_950_carga.sql
+        - file:
+            path: ../../src/ami_base_analisis/plata/plata_950_resumen.sql
