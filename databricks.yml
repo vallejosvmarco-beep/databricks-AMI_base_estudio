@@ -88,14 +88,15 @@ variables:
   # FUENTES AMI (parquet en el volumen de alunizaje)
   # ============================================================
   # Estructura esperada por fuente:
-  #   <ami_base_path>/<fuente>/source=<AMI|PME>/format=PARQUET/periodo=<yyyy>/mes=<m>/[r1|r2/]*.parquet
-  # Fuentes: carga, consumo, tension (source=AMI) y PME (source=PME).
+  #   <ami_base_path>/<fuente>/source=AMI/format=PARQUET/periodo=<yyyy>/mes=<m>/[r1|r2/]*.parquet
+  # Fuentes: carga, consumo, tension (source=AMI). PME se ingiere en el bundle PME_base
+  # (datosami.datos.pme es una vista de compatibilidad sobre pme_base_bronce_pme).
   # Bronce = streaming tables con Auto Loader (solo lee archivos nuevos), un flujo por mes.
   # La ventana se calcula en src/ami_base/utilities/ventana.py listando el landing; solo
-  # cuentan los meses con parquet en las 4 fuentes. La tarea retencion_bronce borra del
+  # cuentan los meses con parquet en las 3 fuentes. La tarea retencion_bronce borra del
   # bronce los meses que salen de la ventana. Plata incluye toda la masa de clientes.
   ami_base_path:
-    description: Carpeta raiz de los parquet AMI/PME en el volumen de alunizaje
+    description: Carpeta raiz de los parquet AMI en el volumen de alunizaje
     default: /Volumes/datosami/datos/vol_alunizaje/ami
 
   # Ultimo mes de la ventana. "ultimo" = ultimo mes disponible en el landing (se detecta

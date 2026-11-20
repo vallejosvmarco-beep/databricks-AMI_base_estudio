@@ -22,7 +22,7 @@ except NameError:  # spark_python_task ejecuta el archivo sin __file__
 sys.path.insert(0, os.path.dirname(os.path.dirname(_script)))
 from utilities.ventana import meses_contexto, meses_ventana  # noqa: E402
 
-TABLAS_PERMITIDAS = {"carga", "consumo", "tension", "pme"}
+TABLAS_PERMITIDAS = {"carga", "consumo", "tension"}
 
 
 def main(argv):

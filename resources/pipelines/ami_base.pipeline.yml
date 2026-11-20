@@ -27,7 +27,7 @@ resources:
         project.oficial_periodo: ${var.oficial_periodo}
         project.oficial_mes: ${var.oficial_mes}
 
-        # Fuentes AMI/PME: parquet en vol_alunizaje (ver databricks.yml)
+        # Fuentes AMI: parquet en vol_alunizaje (ver databricks.yml). PME vive en el bundle PME_base.
         # ami_periodo/ami_mes = "ultimo" -> ultimo mes disponible; ami_meses_historial = "1" | N | "todos"
         project.ami_base_path: ${var.ami_base_path}
         project.ami_periodo: ${var.ami_periodo}
@@ -50,9 +50,6 @@ resources:
 
         - file:
             path: ../../src/ami_base/bronce/tension.py
-
-        - file:
-            path: ../../src/ami_base/bronce/pme.py
 
         - file:
             path: ../../src/ami_base/plata/plata_lp_canales_duplicados.sql

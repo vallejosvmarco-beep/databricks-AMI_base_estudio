@@ -8,13 +8,15 @@ que consumen los proyectos aguas abajo (por ejemplo, Curvas Q3).
 
 ```
 landing (vol_alunizaje/ami, parquet)
-  └─ bronce   carga, consumo, tension, pme        (+ tmt, tmtb: listas oficiales de NIS)
+  └─ bronce   carga, consumo, tension             (+ tmt, tmtb: listas oficiales de NIS)
       └─ plata    plata_carga, plata_consumo       (toda la masa de clientes)
           └─ plata_analisis  plata_carga_diferencias, plata_carga_completitud
               └─ plata_950_carga                   (fin del alcance; PLAN = TMT/TMTB o NULL)
 ```
 
-Fuera de alcance: capa oro, margenes y dashboards. El filtro TMT/TMTB (`PLAN IS NOT NULL`)
+Fuera de alcance: capa oro, margenes, dashboards y PME. PME se ingiere en el bundle
+`PME_base` (`datosami.datos.pme_base_bronce_pme`); `datosami.datos.pme` es una vista de
+compatibilidad sobre esa tabla. El filtro TMT/TMTB (`PLAN IS NOT NULL`)
 se aplica solo en el analisis de margenes de comercializacion (bundle `tmt_tmtb_oro`).
 
 ## Recursos
@@ -30,7 +32,7 @@ se aplica solo en el analisis de margenes de comercializacion (bundle `tmt_tmtb_
 * El bronce son streaming tables con Auto Loader: cada corrida solo lee archivos nuevos, con un
   flujo por mes. Plata y plata_analisis son materialized views.
 * La ventana se calcula en `src/ami_base/utilities/ventana.py` listando el landing. Solo cuentan los
-  meses con parquet en las 4 fuentes (carga, consumo, tension, PME).
+  meses con parquet en las 3 fuentes (carga, consumo, tension).
 * Por defecto (`ami_periodo`/`ami_mes` = `ultimo`, `ami_meses_historial` = `1`) se ingiere solo el
   ultimo mes disponible. La carga es incremental: los meses que salen de la ventana dejan de
   ingerirse pero se quedan en el bronce (el job no borra nada). `retencion_bronce.py` queda para
@@ -45,7 +47,7 @@ se aplica solo en el analisis de margenes de comercializacion (bundle `tmt_tmtb_
 | Variable | Uso |
 | --- | --- |
 | `catalog`, `schema_*` | Destino de las tablas |
-| `ami_base_path` | Raiz del landing AMI/PME |
+| `ami_base_path` | Raiz del landing AMI |
 | `ami_periodo`, `ami_mes`, `ami_meses_historial` | Ventana de meses del bronce (`ultimo`, `1` / `N` / `todos`) |
 | `volume_oficiales`, `oficial_periodo`, `oficial_mes` | Excel oficiales TMT/TMTB (lista de NIS y plan) |
 | `periodo_inicio`, `periodo_fin` | Periodo evaluado en plata_analisis / plata_950 (`auto` o fechas) |

@@ -31,8 +31,8 @@ targets:
       # oficial_mes: "06"
 
       # --------------------------------------------------------
-      # LANDING AMI / PME (opcional)
-      # Parquet en <ami_base_path>/<carga|consumo|tension|PME>/source=.../format=PARQUET/periodo=<yyyy>/mes=<m>
+      # LANDING AMI (opcional; PME se ingiere en el bundle PME_base)
+      # Parquet en <ami_base_path>/<carga|consumo|tension>/source=AMI/format=PARQUET/periodo=<yyyy>/mes=<m>
       # El bronce solo guarda la ventana configurada (ingesta incremental + retencion).
       # ami_periodo/ami_mes: "ultimo" (ultimo mes del landing) o un mes fijo.
       # ami_meses_historial: "1", "N" o "todos".

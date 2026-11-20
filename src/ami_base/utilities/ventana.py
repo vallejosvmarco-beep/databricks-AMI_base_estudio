@@ -1,9 +1,10 @@
 """Ventana de meses AMI_base, compartida por los bronces y la tarea de retencion.
 
 Los meses se descubren listando el landing:
-    <ami_base_path>/<fuente>/source=<AMI|PME>/format=PARQUET/periodo=<yyyy>/mes=<m>
+    <ami_base_path>/<fuente>/source=AMI/format=PARQUET/periodo=<yyyy>/mes=<m>
 Solo cuentan los meses que tienen al menos un .parquet en TODAS las fuentes
-(carga, consumo, tension, PME), para que bronce y plata queden alineados.
+(carga, consumo, tension), para que bronce y plata queden alineados.
+PME ya no es parte de AMI_base: se ingiere en el bundle PME_base.
 
 Parametros (configuracion del pipeline / argumentos de la tarea):
     ami_periodo, ami_mes   "ultimo" = ultimo mes disponible en el landing,
@@ -18,7 +19,7 @@ lectura del contador previa al periodo. Las demas fuentes no lo usan.
 import os
 import re
 
-FUENTES = (("carga", "AMI"), ("consumo", "AMI"), ("tension", "AMI"), ("PME", "PME"))
+FUENTES = (("carga", "AMI"), ("consumo", "AMI"), ("tension", "AMI"))
 
 _RE_PERIODO = re.compile(r"periodo=(\d{4})")
 _RE_MES = re.compile(r"mes=(\d{1,2})")
@@ -66,7 +67,7 @@ def meses_ventana(base: str, periodo="ultimo", mes="ultimo", historial="1") -> l
     """Lista ordenada de (periodo, mes) a ingerir/conservar."""
     disponibles = meses_comunes(base)
     if not disponibles:
-        raise ValueError(f"No hay meses con datos en todas las fuentes AMI/PME bajo {base}")
+        raise ValueError(f"No hay meses con datos en todas las fuentes AMI bajo {base}")
 
     periodo, mes, historial = (str(v).strip().lower() for v in (periodo, mes, historial))
     if periodo == "ultimo" or mes == "ultimo":
