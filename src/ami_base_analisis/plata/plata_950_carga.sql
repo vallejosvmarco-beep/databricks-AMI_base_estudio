@@ -12,8 +12,13 @@
 --   * Una fila por NISE / OPERACION / FECHA (dia de la curva) / INTERVALO 1..96.
 --     FECHA_LECTURA = fin del intervalo; la etiqueta de las 00:00 es el intervalo 96
 --     del dia anterior.
---   * TEMPORADA: verano (ene-abr), invierno (may-sep), fuera_estudio (oct-dic).
---     TIPO_DIA: laboral / fin_de_semana.
+--   * Calendario desde la tabla comun ref_calendario (definida en
+--     databricks-conocimiento_base_estudio/src/referencias/ref_calendario.sql), unida por
+--     FECHA = dia de la curva (cambio 2026-11-20; se aplica en el proximo refresco):
+--     TEMPORADA = TEMPORADA_ESTUDIO: verano (ene-abr), invierno (may-sep), fuera_estudio (oct-dic).
+--     TIPO_DIA: laboral / fin_de_semana; feriado = fin_de_semana (antes los feriados
+--     entre semana quedaban 'laboral'). Nuevas: EPOCA_CLIMATICA (seca/lluviosa),
+--     TIPO_DIA_DETALLE (entre_semana/sabado/domingo/feriado), FLAG_FERIADO.
 --   * Atributos del maestro de clientes (tarifa, sector, GD, estado, red) y marcas:
 --     sin cliente, GD inconsistente, constante distinta, servicio no activo, canales
 --     duplicados del perfil, sin medidor de red, canal duplicado del SGD.
@@ -190,12 +195,11 @@ SELECT
   cu.FECHA_CURVA AS FECHA,
   cu.INTERVALO,
   cu.HORA,
-  CASE
-    WHEN MONTH(cu.FECHA_CURVA) BETWEEN 1 AND 4 THEN 'verano'
-    WHEN MONTH(cu.FECHA_CURVA) BETWEEN 5 AND 9 THEN 'invierno'
-    ELSE 'fuera_estudio'
-  END AS TEMPORADA,
-  CASE WHEN DAYOFWEEK(cu.FECHA_CURVA) IN (1, 7) THEN 'fin_de_semana' ELSE 'laboral' END AS TIPO_DIA,
+  cal.TEMPORADA_ESTUDIO AS TEMPORADA,
+  cal.TIPO_DIA,
+  cal.EPOCA_CLIMATICA,
+  cal.TIPO_DIA_DETALLE,
+  cal.FLAG_FERIADO,
   ROUND(cu.ENERGIA, 3) AS ENERGIA,
   ROUND(cu.ENERGIA * 4, 3) AS DEMANDA,
   cu.ES_IMPUTADO,
@@ -219,6 +223,8 @@ SELECT
   COALESCE(s.FLAG_SIN_MEDIDOR_RED, 0) AS FLAG_SIN_MEDIDOR_RED,
   COALESCE(s.FLAG_CANAL_DUPLICADO, 0) AS FLAG_CANAL_DUPLICADO
 FROM curva cu
+LEFT JOIN ${project.catalog}.${project.schema_analisis}.ref_calendario cal
+  ON cal.FECHA = cu.FECHA_CURVA
 LEFT JOIN atributos atr
   ON cu.NISE = atr.NISE
 LEFT JOIN alertas_sgd s
